@@ -1,0 +1,295 @@
+//Fragmentation model
+
+function (float) area(o$ pop, f$ sigma, f$ maxDistance) {
+   x = pop.individuals.x;
+   y = pop.individuals.y;
+   ab = pop.spatialBounds;
+   A = rep(1.0, length(x));
+   nearby = (
+         ((x - ab[0]) < maxDistance) |
+         ((ab[2] - x) < maxDistance) |
+         ((y - ab[1]) < maxDistance) |
+         ((ab[3] - y) < maxDistance)
+     );
+   A[nearby] = (A[nearby] *
+        (pnorm(x[nearby], ab[0], sigma) - pnorm(x[nearby], ab[2], sigma)) *
+        (pnorm(y[nearby], ab[1], sigma) - pnorm(y[nearby], ab[3], sigma))
+       );
+   return(A);
+}
+
+initialize() {
+    initializeSLiMModelType("nonWF");
+    initializeSLiMOptions(keepPedigrees=T, dimensionality="xy");
+    initializeTreeSeq();
+    
+    defineConstant("W", 20.0);  // width of the simulated area 
+    defineConstant("SIGMA", 0.5);
+    defineConstant("K", 5);  // carrying-capacity per unit square (roughly)
+    catn(c("W =", 20));
+    catn(c("SIGMA =", 0.5));
+    catn(c("K =", 5));
+    defineConstant("SD", 0.5);  // sigma_D, the dispersal distance
+    catn(c("SD =", 0.5));
+    defineConstant("SI", SIGMA);  // sigma_I, the spatial interaction distance
+    catn(c("SI =", SI));
+    defineConstant("SM", SI);  // sigma_M, the mate choice distance
+    catn(c("SM =", SM));
+    defineConstant("L", 4);    // mean lifetime at stationarity
+    catn(c("L =", 1/L));
+    defineConstant("G", 1e9);  // genome length
+    catn(c("G =", G));
+    defineConstant("FECUN", 1/L); // mean fecundity
+    catn(c("FECUN =", FECUN));
+    defineConstant("RHO", FECUN/((1+FECUN) * K)); // constant in spatial competition function
+
+    initializeMutationType("m1", 0.5, "g", 0.0, 2);
+    initializeGenomicElementType("g1", m1, 1.0);
+    initializeGenomicElement(g1, 0, G-1);
+    initializeMutationRate(0.0);
+    initializeRecombinationRate(1e-9);
+    
+    // spatial competition
+    initializeInteractionType(1, "xy", reciprocal=T, maxDistance=SI * 3);
+    i1.setInteractionFunction("n", 1.0/(2*PI*SI^2), SI);
+    
+    // mate choice
+    initializeInteractionType(2, "xy", reciprocal=T, maxDistance=SM * 3);
+    i2.setInteractionFunction("n", 1.0/(2*PI*SM^2), SM);
+}
+
+reproduction() {
+	mate = i2.drawByStrength(individual, 1);
+    if (mate.size()) {
+        nOff = rpois(1, FECUN);
+        individual.tag = individual.tag + nOff;
+        for (i in seqLen(nOff)) {
+            pos = individual.spatialPosition + rnorm(2, 0, SD);
+            if (p1.pointInBounds(pos)) {
+            	offspring = subpop.addCrossed(individual, mate);
+          		offspring.setSpatialPosition(pos);
+          		offspring.tag = 0;
+          	}
+        }
+    }
+    return;
+}
+
+
+1 early() {
+    sim.addSubpop("p1", asInteger(K * W * W));
+    p1.setSpatialBounds(c(0, 0, W, W));
+    // random initial positions
+    for (ind in p1.individuals) {
+        ind.setSpatialPosition(p1.pointUniform());
+        ind.tag = 0;
+    }
+    i1.evaluate();
+
+  // make the spatial map:
+    g = 1.0; // good habitat
+    d = 0.1; // contracting habitat
+    defineConstant("mapValues", matrix(
+      c(g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g,
+        g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g,
+        g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g,
+        g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g,
+        g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g,
+        g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g,
+        g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g,
+        g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g,
+        g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g,
+        g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g,
+        g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g,
+        g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g,
+        g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g,
+        g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g,
+        g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g,
+        g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g,
+        g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g,
+        g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g,
+        g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g,
+        g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g), ncol=20));
+    p1.defineSpatialMap("Kmap", "xy", mapValues, interpolate=T,
+        valueRange=c(d, g), colors=c("red", "yellow"));
+
+}
+
+early() {
+    i1.evaluate(p1);
+    inds = p1.individuals;
+    competition = i1.totalOfNeighborStrengths(inds);
+    // record strength of competition in the tagF
+    inds.tagF = competition;
+    // inds.fitnessScaling = pmin(0.95, 1/(1 + RHO * competition));    
+    // adjust for local habitat quality
+    for (ind in inds) {
+        Klocal = p1.spatialMapValue("Kmap", ind.spatialPosition);
+        ind.fitnessScaling = pmin(0.95, 1/(1 + RHO * ind.tagF / Klocal));
+    }
+}
+    // avoid edge effects
+late() {
+	i1.evaluate();
+	sigma = asFloat(SIGMA);
+   neighbor_density = i1.totalOfNeighborStrengths(p1.individuals);
+   habitat = area(p1, sigma, i1.maxDistance);
+   p1.individuals.tag =
+        rpois(p1.individualCount, FECUN / (1 + neighbor_density / (habitat * K)));
+}
+
+1: late(){
+	inds = p1.individuals; 
+	sampledIndividuals = sample(p1.individuals, 50);
+   relatedinds = sampledIndividuals.relatedness(sampledIndividuals);
+   related = (sum(relatedinds) - 50) / 50;
+	if (sim.generation > 19999) {
+	catn("Generation: " + sim.generation + " Population_size: " + p1.individualCount + " Mean age " + mean(inds.age) + " Max age " + max(inds.age) + " Mean # offspring " + mean(inds.tag) + " Relatedness " + related);
+	}
+}
+
+1: late() {
+   // to be ready for mate choice
+   i2.evaluate(p1);
+}
+
+2: late() {
+    // GUI COLORS
+    //  green = many neighbors, few offspring so far
+    //  red = many offspring so far, few neighbors
+    //  yellow = many offspring so far, many neighbors
+    max_n = max(1, max(p1.individuals.tag));
+    max_f = max(0.01, max(p1.individuals.tagF));
+    max_a = max(p1.individuals.age);
+    for (ind in p1.individuals) {
+       ind.color = rgb2color(c(ind.tag/max_n, ind.tagF/max_f, ind.age/max_a));
+    }
+}
+
+20000: early(){
+	sim.treeSeqRememberIndividuals(p1.individuals);}
+
+20100 late() {
+
+// make the spatial map:
+    g = 1.0; // good habitat
+    d = 0.1; // contracting habitat
+    defineConstant("mapValues2", matrix(
+      c(d, d, d, g, g, g, g, g, g, d, d, d, d, d, g, g, g, g, g, g,
+        d, g, d, g, g, g, g, g, g, d, d, d, d, d, g, g, g, g, g, g,
+        d, g, g, g, g, g, g, g, g, d, d, d, d, d, g, g, g, g, g, g,
+        d, d, g, g, g, g, d, d, g, d, d, d, d, d, g, g, g, g, g, g,
+        d, d, g, g, g, g, g, g, g, d, d, d, d, d, g, g, g, g, g, g,
+        g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g,
+        g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g,
+        g, g, g, d, d, d, d, g, g, g, g, g, g, g, g, g, g, g, g, g,
+        g, g, g, d, d, d, d, g, g, g, g, g, g, g, g, g, g, g, g, g,
+        g, g, g, d, d, d, g, d, d, d, d, g, g, g, g, g, g, g, g, g,
+        g, g, g, g, g, g, g, d, d, d, d, g, g, g, g, g, g, g, g, g,
+        g, g, g, g, g, g, g, d, d, d, d, g, g, g, g, g, g, g, g, g,
+        g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g,
+        g, d, d, d, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g,
+        g, d, d, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g,
+        g, g, d, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g,
+        g, g, d, d, d, g, g, g, g, g, d, d, g, g, g, g, g, g, g, g,
+        g, g, d, d, d, g, g, g, g, g, d, d, g, g, g, g, g, g, g, g,
+        g, g, d, d, d, g, g, g, g, g, d, d, g, g, g, g, g, g, g, g,
+        g, g, d, d, d, g, g, g, g, g, d, d, g, g, g, g, g, g, g, g), ncol=20));
+    p1.defineSpatialMap("Kmap", "xy", mapValues2, interpolate=T,
+        valueRange=c(d, g), colors=c("red", "yellow")); }
+        
+20200 late(){
+
+// make the spatial map:
+    g = 1.0; // good habitat
+    d = 0.1; // contracting habitat
+    defineConstant("mapValues3", matrix(
+      c(d, d, d, d, d, d, d, d, g, d, d, d, d, d, d, g, g, g, g, d,
+        d, d, d, d, g, d, g, d, g, d, d, d, d, d, d, g, g, g, g, d,
+        d, d, d, d, g, g, g, d, g, d, d, d, d, d, d, g, g, g, g, g,
+        d, d, g, g, g, g, d, d, g, d, d, d, d, d, d, g, g, g, g, g,
+        d, d, g, g, g, g, g, g, g, d, d, d, d, d, d, g, g, g, g, g,
+        g, g, g, g, g, g, g, g, g, d, d, g, d, g, g, g, g, g, g, g,
+        g, g, g, g, g, g, g, g, g, g, d, d, d, g, g, g, g, g, g, g,
+        g, g, g, d, d, d, d, g, g, g, d, d, d, d, d, d, g, g, g, g,
+        g, g, g, d, d, d, d, g, g, g, g, d, d, d, d, d, g, g, g, g,
+        g, g, g, d, d, d, g, d, d, d, d, d, d, d, d, d, g, g, g, g,
+        g, g, g, g, g, g, g, d, d, d, d, d, d, d, d, g, d, d, d, d,
+        g, g, g, g, g, g, g, d, d, d, d, g, g, d, d, g, d, g, g, g,
+        d, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, d, g, g, g,
+        d, d, d, d, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g, g,
+        d, d, d, g, g, g, g, g, g, d, d, g, g, g, g, g, d, d, g, g,
+        g, g, d, d, d, d, g, g, g, d, d, g, g, g, g, g, d, d, g, g,
+        g, g, d, d, d, d, g, g, g, d, d, d, g, g, g, g, d, d, d, g,
+        g, g, d, d, d, d, g, g, g, g, d, d, g, g, g, g, g, d, d, d,
+        g, g, d, d, d, d, g, g, d, d, d, d, g, g, g, g, g, g, g, d,
+        g, g, d, d, d, g, g, d, d, d, d, d, g, g, g, g, g, g, g, d), ncol=20));
+    p1.defineSpatialMap("Kmap", "xy", mapValues3, interpolate=T,
+        valueRange=c(d, g), colors=c("red", "yellow")); }
+
+20300 late() { 
+
+// make the spatial map:
+    g = 1.0; // good habitat
+    d = 0.1; // contracting habitat
+    defineConstant("mapValues4", matrix(
+      c(d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d,
+        d, d, d, d, g, d, g, d, d, d, d, d, d, d, d, g, g, g, g, d,
+        d, d, d, d, g, g, g, d, d, d, d, d, d, d, d, g, g, g, g, d,
+        d, d, g, g, g, g, d, d, d, d, d, d, d, d, d, g, g, g, g, d,
+        d, d, g, g, g, g, d, d, d, d, d, d, d, d, d, g, g, g, g, d,
+        g, g, g, g, g, g, d, d, d, d, d, g, d, g, g, g, g, g, d, d,
+        g, g, g, g, g, g, d, d, d, d, d, d, d, g, g, g, g, g, d, d,
+        g, g, g, d, d, d, d, g, g, d, d, d, d, d, d, d, g, d, g, g,
+        g, g, g, d, d, d, d, d, g, g, g, d, d, d, d, d, g, d, d, g,
+        d, g, g, d, d, d, d, d, d, d, d, d, d, d, d, d, g, d, g, g,
+        d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d,
+        d, d, g, g, g, d, d, d, d, d, d, d, d, d, d, d, d, g, g, g,
+        d, g, g, g, g, g, d, d, d, d, d, d, d, d, d, d, d, g, g, g,
+        d, d, d, d, g, g, d, d, g, d, d, d, d, g, g, g, g, g, g, g,
+        d, d, d, g, g, g, d, d, d, d, d, d, g, g, g, g, d, d, g, g,
+        g, g, d, d, d, d, d, g, d, d, d, g, g, g, g, g, d, d, g, g,
+        g, g, d, d, d, d, d, g, d, d, d, d, g, g, g, g, d, d, d, g,
+        g, g, d, d, d, d, d, d, d, d, d, d, g, g, g, g, g, d, d, d,
+        g, g, d, d, d, d, g, d, d, d, d, d, d, g, g, g, g, g, g, d,
+        g, g, d, d, d, g, g, d, d, d, d, d, d, g, g, g, g, g, d, d), ncol=20));
+   
+    	p1.defineSpatialMap("Kmap", "xy", mapValues4, interpolate=T,
+        valueRange=c(d, g), colors=c("red", "yellow"));
+        }
+
+20400 late() {
+
+// make the spatial map:
+    g = 1.0; // good habitat
+    d = 0.1; // contracting habitat
+    defineConstant("mapValues5", matrix(
+      c(d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d,
+        d, d, d, d, g, d, d, d, d, d, d, d, d, d, d, g, g, g, g, d,
+        d, d, d, d, g, g, d, d, d, d, d, d, d, d, d, g, g, g, g, d,
+        d, d, g, g, g, g, d, d, d, d, d, d, d, d, d, g, g, g, g, d,
+        d, d, g, g, g, g, d, d, d, d, d, d, d, d, d, g, g, g, g, d,
+        d, d, g, g, g, d, d, d, d, d, d, d, d, d, d, d, g, g, d, d,
+        d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d,
+        d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d,
+        d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d,
+        d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d,
+        d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d,
+        d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d,
+        d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d,
+        d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d,
+        d, d, d, g, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d, d,
+        g, g, d, d, d, d, d, d, d, d, d, d, d, d, g, g, d, d, g, d,
+        g, g, d, d, d, d, d, d, d, d, d, d, d, d, g, g, d, d, d, d,
+        g, g, d, d, d, d, d, d, d, d, d, d, d, d, g, g, g, d, d, d,
+        g, g, d, d, d, d, d, d, d, d, d, d, d, d, g, g, g, g, g, d,
+        g, g, d, d, d, d, d, d, d, d, d, d, d, d, g, g, g, g, d, d), ncol=20));
+   
+    	p1.defineSpatialMap("Kmap", "xy", mapValues5, interpolate=T,
+        valueRange=c(d, g), colors=c("red", "yellow"));
+        }
+
+20800 late() {
+	sim.treeSeqOutput("frag.trees");
+	sim.simulationFinished();
+	}
